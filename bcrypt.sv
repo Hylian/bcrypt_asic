@@ -34,7 +34,6 @@ module bcrypt(
   /* Salt Shift Register */
   logic [31:0] salt127, salt63; // R
   logic [31:0] salt95, salt31; // L 
-  logic [31:0] saltOut; // output mux
   logic shiftSaltR, shiftSaltL, selSaltR, selSaltL, selSalt;
   
   always_ff @(posedge clk, negedge reset_l) begin
@@ -55,8 +54,6 @@ module bcrypt(
       end
     end
   end
-
-  assign saltOut = selSalt ? salt63 : salt31;
 
   /* Key Shift Register */
   logic [575:0] key;
@@ -289,11 +286,9 @@ module bcrypt(
 
   /* Feistel */
 
-  logic selFeistelSaltOrP, selFeistelMemOrZero;
-  logic [31:0] feistelXorSaltP, feistelXorMem;
-  logic shiftFeistel, loadFeistelCtext;
-
-  assign feistelXorSaltP = selFeistelSaltOrP ? saltOut : P0;
+  logic selFeistelMemOrZero;
+  logic [31:0] feistelXorMem;
+  logic shiftFeistel, loadFeistelCtext, loadFeistelSalt;
 
   always_comb begin
     if(selFeistelMemOrZero) begin
@@ -312,7 +307,7 @@ module bcrypt(
     end
     else begin
       if(!clk) begin
-	L_p <= feistelXorSaltP ^ feistelXorMem ^ R;
+	L_p <= P0 ^ feistelXorMem ^ R;
       end
       if(clk) begin
 	if(shiftFeistel) begin
@@ -322,6 +317,10 @@ module bcrypt(
 	else if(loadFeistelCtext) begin
 	  L <= ct_Orph;
 	  R <= ct_eanB;
+	end
+	else if(loadFeistelSalt) begin
+	  L <= L ^ salt31;
+	  R <= R ^ salt63;
 	end
       end
     end
