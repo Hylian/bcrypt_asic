@@ -7,6 +7,12 @@ module bcrypt(
   input logic clk, reset_l;
   input logic rx;
 
+<<<<<<< Updated upstream
+=======
+
+
+
+>>>>>>> Stashed changes
   /* Outputs */
   output logic tx;
 
