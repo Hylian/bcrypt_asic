@@ -1,25 +1,32 @@
 module bcrypt(
   clk, reset_l, 
-  rx, tx
+  rx, tx,
+  clk_0, clk_1, clk_2, clk_2_1, clk_3,
+  clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor,
+  en_clk_3, en_clk_2, en_1, en_2, en_3, en_4,
+  salt_key_sel, psel,
+  s1Data, s2Data, s3Data, s4Data, re_addr, L, R
 );
 
   /* Inputs */
   input logic clk, reset_l;
   input logic rx;
+  input logic clk_0, clk_1, clk_2, clk_2_1, clk_3;
+  input logic clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor;
+  input logic en_clk_3, en_clk_2, en_1, en_2, en_3, en_4, salt_key_sel;
+  input logic [8:0] psel;
+  input logic [31:0] s1Data, s2Data, s3Data, s4Data;
 
-<<<<<<< Updated upstream:src/bcrypt.sv
-=======
-
-
-
->>>>>>> Stashed changes:bcrypt.sv
   /* Outputs */
+  output logic [31:0] re_addr, L, R;
   output logic tx;
 
   /* SRAM Interface */
+  /*already in fsm
   logic [63:0] s1Data, s2Data, s3Data, s4Data;
   logic [6:0] s1Addr, s2Addr, s3Addr, s4Addr;
   logic s1_en, s2_en, s3_en, s4_en;
+  */
 
   /* UART Interface */
   logic [31:0] uartDataOut, uartDataIn;
@@ -34,73 +41,71 @@ module bcrypt(
   //uartOutValid, uartOutReady, rx, tx, uartTxBusy, uartRxBusy,
   //uartRxOverrunError, uartRxFrameError, uartPrescale);
 
-  /* Feistel Variables */
-  logic [31:0] L_p, L, R;
-
   /* Salt Shift Register */
   logic [31:0] salt127, salt63; // R
   logic [31:0] salt95, salt31; // L 
   logic shiftSaltR, shiftSaltL, selSaltR, selSaltL, selSalt;
   
-  always_ff @(posedge clk, negedge reset_l) begin
+  always_ff @(posedge clk_0, posedge en_clk_2, negedge reset_l) begin
     if(!reset_l) begin
       salt127 <= 0;
       salt63 <= 0;
       salt95 <= 0;
       salt31 <= 0;
     end
-    else if(clk) begin
+    else if (en_clk_2) begin
+	  if (en_1) begin
+	    salt127 <= salt63;
+		salt63 <= salt127;
+	    salt95 <= salt31;
+	    salt31 <= salt95;
+	  end
+	end
+    else if (clk_0) begin
       if(shiftSaltR) begin
-	salt127 <= selSaltR ? salt63 : uartDataOut;
-	salt63 <= salt127;
+	    salt127 <= uartDataOut;
+	    salt63 <= salt127;
       end
       if(shiftSaltL) begin
-	salt95 <= selSaltL ? salt31 : uartDataOut;
-	salt31 <= salt95;
+	    salt95 <= uartDataOut;
+	    salt31 <= salt95;
       end
     end
   end
 
-  /* Key Shift Register */
+  /* EDITED Key Shift Register */
   logic [575:0] key;
   logic shiftKey;
   
-  always_ff @(posedge clk, negedge reset_l) begin
+  always_ff @(posedge clk_0, negedge reset_l) begin
     if(!reset_l) begin
       key <= 0;
     end
-    else if(clk) begin
+    else if(clk_0) begin
       if(shiftKey) key <= {uartDataOut, (key >> 32)};
     end
   end
 
-  /* Cost Shift Register and Comparison */
+  /* EDITED Cost Shift Register and Comparison */
   logic [31:0] cost;
-  logic shiftCost, costIsZero, decrementCost;
+  logic shiftCost;
 
-  always_ff @(posedge clk, negedge reset_l) begin
+  always_ff @(posedge clk_0, negedge reset_l) begin
     if(!reset_l) begin
       cost <= 0;
     end
     else if(clk) begin
       if(shiftCost) begin
-	cost <= uartDataOut;
-      end
-      else if(decrementCost) begin
-	cost <= cost - 1;
+	    cost <= uartDataOut;
       end
     end
   end
 
-  assign costIsZero = (cost == 0);
-  
-
-  /* Ciphertext Shift Register */
+  /* EDITED Ciphertext Shift Register */
   logic [31:0] ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt;
-  logic shiftCtextL, shiftCtextR;
   logic selCT;
 
-  always_ff @(posedge clk, negedge reset_l) begin
+  always_ff @(posedge en_clk_2, negedge reset_l) begin
     if(!reset_l) begin
       ct_Orph <= 32'h4f727068;
       ct_eanB <= 32'h65616e42;
@@ -109,37 +114,41 @@ module bcrypt(
       ct_cryD <= 32'h63727944;
       ct_oubt <= 32'h6f756274;
     end
-    else if(clk) begin
-      if(shiftCtextL) begin
-	ct_Orph <= ct_ehol;
-	ct_ehol <= ct_cryD;
-	ct_cryD <= L;
-      end
-      if(shiftCtextR) begin
-	ct_eanB <= ct_derS;
-	ct_derS <= ct_oubt;
-	ct_oubt <= R;
-      end
+    else if (en_4) begin
+	  ct_Orph <= ct_ehol;
+	  ct_ehol <= ct_cryD;
+	  ct_cryD <= L;
+	  ct_eanB <= ct_derS;
+	  ct_derS <= ct_oubt;
+	  ct_oubt <= R;
     end
   end
 
   assign uartDataIn = selCT ? ct_eanB : ct_Orph;
 
-  /* P-array Shift Register */
-  logic [31:0] P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15, P16, P17;
-  enum logic [1:0] {
-    HOLD = 0,
-    SHIFT = 1,
-    XOR = 2,
-    LOAD = 3
-  } selp0p1, selp2p3, selp4p5, selp6p7, selp8p9, selp10p11, selp12p13, selp14p15, selp16p17;
-  logic selPKey, shiftP;
-  logic [575:0] pKeyOut;
+  /* EDITED P-array Shift Register */
+  logic [31:0] P0, P1, P2, P3, P4, P5, P6, P7, P8;
+  logic [31:0] P9, P10, P11, P12, P13, P14, P15, P16, P17;
+  logic p_xor;
+  logic [575:0] p_key_out;
+  logic [31:0] l_in, r_in;
 
-  assign pKeyOut = selPKey ? {salt63, salt31, {4{salt127, salt95, salt63, salt31}}} : key;
+  assign p_key_out = salt_key_sel ? {salt63, salt31, {4{salt127, salt95, salt63, salt31}}} : key;
+  assign p_xor = (clk_p_xor || clk_p_xor0);
 
-  always_ff @(posedge clk, negedge reset_l) begin
-    if(!reset_l) begin
+  always_ff @(posedge clk_wr_addr, negedge clk_wr_addr, negedge reset_l) begin
+	if (~reset_l || ~clk_wr_addr) begin
+	  l_in <= 0;
+	  r_in <= 0;
+	end
+	else begin
+	  l_in <= L;
+	  r_in <= R;
+	end
+  end
+
+  always_ff @(posedge clk_1, negedge reset_l) begin
+    if (~reset_l) begin
       P0 <= 32'h243f6a88;
       P1 <= 32'h85a308d3;
       P2 <= 32'h13198a2e;
@@ -158,188 +167,95 @@ module bcrypt(
       P15 <= 32'hb5470917;
       P16 <= 32'h9216d5d9;
       P17 <= 32'h8979fb1b;
-    end
-    else if(clk) begin
-      case(selp0p1)
-	SHIFT: begin
-	  P0 <= P1;
-	  P1 <= P2;
 	end
-	XOR: begin
-	  P0 <= P0 ^ pKeyOut[32*(0) +: 32];
-	  P1 <= P1 ^ pKeyOut[32*(1) +: 32];
+	else if (p_xor) begin
+	  P0  <= P1  ^ p_key_out[32*(0)  +: 32];
+	  P1  <= P2  ^ p_key_out[32*(1)  +: 32];
+	  P2  <= P3  ^ p_key_out[32*(2)  +: 32];
+	  P3  <= P4  ^ p_key_out[32*(3)  +: 32];
+	  P4  <= P5  ^ p_key_out[32*(4)  +: 32];
+	  P5  <= P6  ^ p_key_out[32*(5)  +: 32];
+	  P6  <= P7  ^ p_key_out[32*(6)  +: 32];
+	  P7  <= P8  ^ p_key_out[32*(7)  +: 32];
+	  P8  <= P9  ^ p_key_out[32*(8)  +: 32];
+	  P9  <= P10 ^ p_key_out[32*(9)  +: 32];
+	  P10 <= P11 ^ p_key_out[32*(10) +: 32];
+	  P11 <= P12 ^ p_key_out[32*(11) +: 32];
+	  P12 <= P13 ^ p_key_out[32*(12) +: 32];
+	  P13 <= P14 ^ p_key_out[32*(13) +: 32];
+	  P14 <= P15 ^ p_key_out[32*(14) +: 32];
+	  P15 <= P16 ^ p_key_out[32*(15) +: 32];
+	  P16 <= P17 ^ p_key_out[32*(16) +: 32];
+	  P17 <= P0  ^ p_key_out[32*(17) +: 32];
 	end
-	LOAD: begin
-	  P0 <= L;
-	  P1 <= R;
+	else begin
+	  P0  <= (psel[0]) ? l_in : P1;
+	  P1  <= (psel[0]) ? r_in : P2;
+	  P2  <= (psel[1]) ? l_in : P3;
+	  P3  <= (psel[1]) ? r_in : P4;
+	  P4  <= (psel[2]) ? l_in : P5;
+	  P5  <= (psel[2]) ? r_in : P6;
+	  P6  <= (psel[3]) ? l_in : P7;
+	  P7  <= (psel[3]) ? r_in : P8;
+	  P8  <= (psel[4]) ? l_in : P9;
+	  P9  <= (psel[4]) ? r_in : P10;
+	  P10 <= (psel[5]) ? l_in : P11;
+	  P11 <= (psel[5]) ? r_in : P12;
+	  P12 <= (psel[6]) ? l_in : P13;
+	  P13 <= (psel[6]) ? r_in : P14;
+	  P14 <= (psel[7]) ? l_in : P15;
+	  P15 <= (psel[7]) ? r_in : P16;
+	  P16 <= (psel[8]) ? l_in : P17;
+	  P17 <= (psel[8]) ? r_in : P0;
 	end
-      endcase
-      case(selp2p3)
-	SHIFT: begin
-	  P2 <= P3;
-	  P3 <= P4;
-	end
-	XOR: begin
-	  P2 <= P2 ^ pKeyOut[32*(2) +: 32];
-	  P3 <= P3 ^ pKeyOut[32*(3) +: 32];
-	end
-	LOAD: begin
-	  P2 <= L;
-	  P3 <= R;
-	end
-      endcase
-      case(selp4p5)
-	SHIFT: begin
-	  P4 <= P5;
-	  P5 <= P6;
-	end
-	XOR: begin
-	  P4 <= P4 ^ pKeyOut[32*(4) +: 32];
-	  P5 <= P5 ^ pKeyOut[32*(5) +: 32];
-	end
-	LOAD: begin
-	  P4 <= L;
-	  P5 <= R;
-	end
-      endcase
-      case(selp6p7)
-	SHIFT: begin
-	  P6 <= P7;
-	  P7 <= P8;
-	end
-	XOR: begin
-	  P6 <= P6 ^ pKeyOut[32*(6) +: 32];
-	  P7 <= P7 ^ pKeyOut[32*(7) +: 32];
-	end
-	LOAD: begin
-	  P6 <= L;
-	  P7 <= R;
-	end
-      endcase
-      case(selp8p9)
-	SHIFT: begin
-	  P8 <= P9;
-	  P9 <= P10;
-	end
-	XOR: begin
-	  P8 <= P8 ^ pKeyOut[32*(8) +: 32];
-	  P9 <= P9 ^ pKeyOut[32*(9) +: 32];
-	end
-	LOAD: begin
-	  P8 <= L;
-	  P9 <= R;
-	end
-      endcase
-      case(selp10p11)
-	SHIFT: begin
-	  P10 <= P11;
-	  P11 <= P12;
-	end
-	XOR: begin
-	  P10 <= P10 ^ pKeyOut[32*(10) +: 32];
-	  P11 <= P11 ^ pKeyOut[32*(11) +: 32];
-	end
-	LOAD: begin
-	  P10 <= L;
-	  P11 <= R;
-	end
-      endcase
-      case(selp12p13)
-	SHIFT: begin
-	  P12 <= P13;
-	  P13 <= P14;
-	end
-	XOR: begin
-	  P12 <= P12 ^ pKeyOut[32*(12) +: 32];
-	  P13 <= P13 ^ pKeyOut[32*(13) +: 32];
-	end
-	LOAD: begin
-	  P12 <= L;
-	  P13 <= R;
-	end
-      endcase
-      case(selp14p15)
-	SHIFT: begin
-	  P14 <= P15;
-	  P15 <= P16;
-	end
-	XOR: begin
-	  P14 <= P14 ^ pKeyOut[32*(14) +: 32];
-	  P15 <= P15 ^ pKeyOut[32*(15) +: 32];
-	end
-	LOAD: begin
-	  P14 <= L;
-	  P15 <= R;
-	end
-      endcase
-      case(selp16p17)
-	SHIFT: begin
-	  P16 <= P17;
-	  P17 <= P0;
-	end
-	XOR: begin
-	  P16 <= P16 ^ pKeyOut[32*(16) +: 32];
-	  P17 <= P17 ^ pKeyOut[32*(17) +: 32];
-	end
-	LOAD: begin
-	  P16 <= L;
-	  P17 <= R;
-	end
-      endcase
-    end
-
   end
 
-  /* Feistel */
+  /* EDITED Feistel */
 
   logic selFeistelMemOrZero;
   logic [31:0] feistelXorMem;
-  logic shiftFeistel, loadFeistelCtext, loadFeistelSalt;
+  logic xor_load, ctext_load;
+  logic feistel_clk;
 
-  always_comb begin
-    if(selFeistelMemOrZero) begin
-      if(L_p[0]) feistelXorMem = (((s1Data[63:32] + s2Data[63:32]) ^ s3Data[63:32]) + s4Data[63:32]);
-      else feistelXorMem = (((s1Data[31:0] + s2Data[31:0]) ^ s3Data[31:0]) + s4Data[31:0]);
-    end
+  assign selFiestelMemOrZero = (~en_clk_2);
 
-    else feistelXorMem = 0;
-  end
+  assign feistelXorMem = (((s1Data + s2Data) ^ s3Data) + s4Data);
+  assign re_addr = (selFeistelMemOrZero) ? (P0 ^ feistelXorMem ^ R) : R;
+  assign ctext_load = ((en_clk_2 && en_4) || en_clk_3);
+  assign xor_load = (en_clk_2 && (en_1 || en_2 || en_3));
 
-  always_ff @(posedge clk, negedge clk, negedge reset_l) begin
+  or g0(feistel_clk, clk_1, clk_2);
+
+  always_ff @(posedge feistel_clk, posedge clk_2_1, negedge reset_l) begin
     if(!reset_l) begin
       L <= 0;
-      L_p <= 0;
       R <= 0;
     end
-    else begin
-      if(!clk) begin
-	L_p <= P0 ^ feistelXorMem ^ R;
-      end
-      if(clk) begin
-	if(shiftFeistel) begin
-	  L <= L_p;
+    else if (clk_1) begin
+	  L <= re_addr;
 	  R <= L;
 	end
-	else if(loadFeistelCtext) begin
-	  L <= ct_Orph;
-	  R <= ct_eanB;
+	else if (ctext_load) begin
+	  L <= (ct_Orph && {32{en_4}});
+	  R <= (ct_eanB && {32{en_4}});
 	end
-	else if(loadFeistelSalt) begin
-	  L <= L ^ salt31;
-	  R <= R ^ salt63;
+	else if (clk_2_1 || xor_load) begin        //HERE ISH
+	  L <= L ^ (salt31 && {32{en_1}});
+	  R <= R ^ (salt63 && {32{en_1}});
 	end
-      end
-    end
   end
 
   /* L_p to Memory Address Mapping */
+  /* already in fsm 
   logic [6:0] feistel_s1_addr, feistel_s2_addr, feistel_s3_addr, feistel_s4_addr;
   assign feistel_s1_addr = L_p[31:25];
   assign feistel_s2_addr = L_p[23:17];
   assign feistel_s3_addr = L_p[15:9];
   assign feistel_s4_addr = L_p[7:1];
+  */
 
   /* Memory Address Write Counter */
+  /* already in fsm
   logic [6:0] memWriteAddrCtr; // Increment through all the addresses for this SRAm
   logic [1:0] memWriteSRAMCtr; // Increment through each of the 4 SRAMs
   logic incrementWriteAddrCtr, incrementWriteSRAMCtr, clearSRAMCtrs;
@@ -360,12 +276,15 @@ module bcrypt(
       end
     end
   end
+  */
 
   /* Memory Address Read/Write Mux */
+  /* already in fsm
   logic selS1Addr, selS2Addr, selS3Addr, selS4Addr;
   assign s1Addr = selS1Addr ? memWriteAddrCtr : feistel_s1_addr;
   assign s2Addr = selS2Addr ? memWriteAddrCtr : feistel_s2_addr;
   assign s3Addr = selS3Addr ? memWriteAddrCtr : feistel_s3_addr;
   assign s4Addr = selS4Addr ? memWriteAddrCtr : feistel_s4_addr;
+  */
 
 endmodule: bcrypt
