@@ -1,16 +1,17 @@
 module state_fsm(
-	clk, clk_3, rst_l, cost, start,
+	clk, clk_3, cost, start,
+	int_rst_l, ext_rst_l,
 	en,   en_1, en_2,
-	en_3, en_4, en_5, cost0
+	en_3, en_4, en_5, cost0, rst_l
 	);
 
 	/* Inputs */
-	input bit clk, clk_3, rst_l, start;
+	input bit clk, clk_3, int_rst_l, ext_rst_l, start;
 	input bit [63:0] cost;
 
 	/* Outputs */
 	output bit en,   en_1, en_2;
-	output bit en_3, en_4, en_5, cost0;
+	output bit en_3, en_4, en_5, cost0, rst_l;
 
 	/* State Logic */
 	bit [2:0] state, state_n, state_m;
@@ -80,29 +81,32 @@ module state_fsm(
 	assign cost_n = (en) ? (cost_curr - 64'd1) : cost;
 	assign costshift = (en) ? en_3 : start;
 
+	/* chip reset logic */
+	and g2(rst_l, int_rst_l, ext_rst_l);
+
 endmodule : state_fsm
 
 /* fsm for main gaited clock, 18 + 1 cycles */
 module clock_fsm (
-	en, en_1, en_2, en_3, en_4, cost0,
+	en, en_1, en_2, en_3, en_4, cost0, load,
 	clk, rst_l, clk_3,
 	clk_0, clk_l, clk_1, clk_2, clk_2_1, 
-	en_clk_2, en_clk_1,
+	en_clk_2, en_clk_1_0, en_clk_1_17,
 	clk_wr_addr, clk_rw_sel, clk_p_xor0, clk_p_xor, clk_ctext_load
 	);
 
 	/* Inputs */
-	input bit en, en_1, en_2, en_3, en_4, cost0, clk, rst_l, clk_3;
+	input bit en, en_1, en_2, en_3, en_4, cost0, load, clk, rst_l, clk_3;
 
 	/* Outputs */
-	output bit clk_0, clk_l, clk_1, clk_2, clk_2_1, en_clk_2, en_clk_1;
+	output bit clk_0, clk_l, clk_1, clk_2, clk_2_1, en_clk_2, en_clk_1_0, en_clk_1_17;
 	output bit clk_wr_addr, clk_rw_sel, clk_p_xor0, clk_p_xor, clk_ctext_load;
 
 	/* Intermediary logic */
 	bit [4:0] count, count_n;
-	bit d_1, d_2, d_3, d_4;
+	bit d_1, d_2, d_3, d_4, d_5;
 	bit q_1, q_2, q_3, q_4;
-	bit go;
+	bit go, load_in;
 	bit addr_en;
 
 	/* FF for cycle count */
@@ -112,6 +116,16 @@ module clock_fsm (
 	  end
 	  else if (go) begin
 	    count <= count_n;
+	  end
+	end
+
+	/* FF for starting load in */
+	always_ff @(posedge load, negedge rst_l) begin
+	  if (~rst_l) begin
+	    load_in <= 0;
+	  end
+	  else begin
+	    load_in <= 1;
 	  end
 	end
 
@@ -154,10 +168,20 @@ module clock_fsm (
 
 	always_ff @(negedge clk, negedge rst_l) begin
 	  if (~rst_l) begin
-	    en_clk_1 <= 0;
+	    en_clk_1_0 <= 0;
 	  end
 	  else begin
-	    en_clk_1 <= d_4;
+	    en_clk_1_0 <= d_4;
+	  end
+	end
+
+	/* enable signal for last clk_1 in cycle */
+	always_ff @(negedge clk, negedge rst_l) begin
+	  if (~rst_l) begin
+	    en_clk_1_17 <= 0;
+	  end
+	  else begin
+	    en_clk_1_17 <= (count_n > 5'd18);
 	  end
 	end
 
@@ -191,13 +215,14 @@ module clock_fsm (
 	and g2(clk_2, q_2, clk, en);
 	and g3(clk_2_1, q_3, clk, en);
 	or  g4(addr_en, en_1, en_2, en_3);
-	and g5(clk_0, q_4, clk);
+	and g5(d5, q_4, clk);
 
 	assign go = (en) ? clk : 0;
 	assign d_2 = (count > 5'd18);
 	assign count_n = (d_2) ? 5'd1 : (count + 5'd1);
 	assign d_3 = (count == 5'd0);
 	assign d_1 = (~(d_2 || d_3));
+	assign clk_0 = (load_in) ? d5 : 0;
 
 endmodule : clock_fsm
 
@@ -323,23 +348,24 @@ endmodule : addr_calc
 
 module sram_ctrl(
 	clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l,
-	l, r, wr_addr, re_addr,
-	cs0, cs1, cs2, cs3, data_ready,
+	en_clk_1_17,
+	l, r, wr_addr, re_addr, data_ready,
 	wl_0, wl_1, wl_2, wl_3,
 	d_sel0, d_sel1, d_sel2, d_sel3,
-	bl_0, bl_1, bl_2, bl_3
+	bl
 	);
 
 	/* Input logic */
 	input bit clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l;
-	input bit cs0, cs1, cs2, cs3, data_ready;
+	input bit en_clk_1_17;
+	input bit data_ready;
 	input bit [31:0] l, r, re_addr;
 	input bit [6:0] wr_addr;
 
 	/* Output logic */
 	output bit [6:0] wl_0, wl_1, wl_2, wl_3;
 	output bit d_sel0, d_sel1, d_sel2, d_sel3;
-	output bit [63:0] bl_0, bl_1, bl_2, bl_3;
+	output bit [63:0] bl;
 
 	/* FFs for addr, data in, precharge */
 	bit [63:0] data_in;
@@ -347,9 +373,9 @@ module sram_ctrl(
 	bit [31:0] re_addr_in;
 	bit [63:0] precharge;
 
-	always_ff @(posedge clk_wr_addr, posedge data_ready, 
-		    negedge rst_l) begin
-	  if ((~rst_l) || data_ready) begin
+/*
+	always_ff @(posedge clk_wr_addr, negedge rst_l) begin
+	  if (~rst_l) begin
 	    data_in <= 0;
 	  end
 	  else begin
@@ -357,8 +383,8 @@ module sram_ctrl(
 	  end
 	end
 
-	always_ff @(posedge data_ready, negedge clk_2, negedge rst_l) begin
-	  if ((~rst_l) || data_ready) begin
+	always_ff @(negedge clk_2, negedge rst_l) begin
+	  if (~rst_l) begin
 	    wr_addr_in <= 0;
 	  end
 	  else begin
@@ -374,47 +400,30 @@ module sram_ctrl(
 	    re_addr_in <= re_addr;
 	  end
 	end
+*/
 
-	always_ff @(posedge clk_1, posedge data_ready, negedge rst_l) begin
-	  if ((~rst_l) || data_ready) begin
+	always_ff @(posedge clk_1, negedge rst_l) begin
+	  if (~rst_l) begin
 	    precharge <= 0;
 	  end
 	  else begin
-	    precharge <= {64{1'b1}};
+	    precharge <= (en_clk_1_17) ? 64'd0 : {64{1'b1}};
 	  end
 	end
 
 	/* bitline muxing */
-	bit [63:0] d0, d1, d2, d3;
-	bit [63:0] in_0, in_1, in_2, in_3;
-	
-	and g0[63:0] (d0, {64{cs0}}, data_in);
-	and g1[63:0] (d1, {64{cs1}}, data_in);
-	and g2[63:0] (d2, {64{cs2}}, data_in);
-	and g3[63:0] (d3, {64{cs3}}, data_in);
-
-	or g4[63:0] (bl_0, precharge, d0);
-	or g5[63:0] (bl_1, precharge, d1);
-	or g6[63:0] (bl_2, precharge, d2);
-	or g7[63:0] (bl_3, precharge, d3);
+	or g4[63:0] (bl, precharge, {l, r});
 
 	/* wordline muxing */
-	bit [6:0] ad0, ad1, ad2, ad3;
+	assign wl_0 = (clk_rw_sel) ? wr_addr : re_addr[7:1];
+	assign wl_1 = (clk_rw_sel) ? wr_addr : re_addr[15:9];
+	assign wl_2 = (clk_rw_sel) ? wr_addr : re_addr[23:17];
+	assign wl_3 = (clk_rw_sel) ? wr_addr : re_addr[31:25];
 
-	and  g8[6:0] (ad0, wr_addr_in, {7{cs0}});
-	and  g9[6:0] (ad1, wr_addr_in, {7{cs1}});
-	and g10[6:0] (ad2, wr_addr_in, {7{cs2}});
-	and g11[6:0] (ad3, wr_addr_in, {7{cs3}});
-
-	assign wl_0 = (clk_rw_sel) ? ad0 : re_addr_in[7:1];
-	assign wl_1 = (clk_rw_sel) ? ad1 : re_addr_in[15:9];
-	assign wl_2 = (clk_rw_sel) ? ad2 : re_addr_in[23:17];
-	assign wl_3 = (clk_rw_sel) ? ad3 : re_addr_in[31:25];
-
-	assign d_sel0 = re_addr_in[0];
-	assign d_sel1 = re_addr_in[8];
-	assign d_sel2 = re_addr_in[16];
-	assign d_sel3 = re_addr_in[24];
+	assign d_sel0 = re_addr[0];
+	assign d_sel1 = re_addr[8];
+	assign d_sel2 = re_addr[16];
+	assign d_sel3 = re_addr[24];
 
 endmodule : sram_ctrl
 
@@ -461,3 +470,141 @@ module p_ctrl(
 	and g0[8:0] (psel, p_adr, {9{clk_wr_addr}});
 
 endmodule : p_ctrl
+
+module load_costsaltkey(
+	cost, key, salt, clk_0, rst_l,
+	cost_a, key_c, salt_c, start);
+
+	input bit [575:0] key;
+	input bit [127:0] salt;
+	input bit [5:0] cost;
+	input bit clk_0, rst_l;
+	
+	output bit [575:0] key_c, salt_c;
+	output bit [63:0] cost_a;
+	output bit start;
+
+	bit [1:0] key_ready;
+	bit cost_ready, salt_ready;
+	bit [9:0] key_count, key_shift_len;
+
+	/* shift reg for cycling key */
+	always_ff @(posedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+	    key_c <= 0;
+	  end
+	  else if (key_ready == 2'b00) begin
+		key_c <= key;
+	  end
+	  else if (key_ready == 2'b01) begin
+	    key_c <= (key_c << 1'b1);
+	  end
+	  else if (key_ready == 2'b10) begin
+	    key_c <= (key_c >> 1'b1);
+		key_c[575] <= key_c[key_shift_len];
+	  end
+	end
+
+	/* counter to count key length */
+	always_ff @(posedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+	    key_count <= 0;
+	  end
+	  else if (key_ready == 2'b01) begin
+	    key_count <= (key_count + 10'd1);
+	  end
+	  else if (key_ready == 2'b10) begin
+	    key_count <= (key_count - 10'd1);
+	  end
+	end
+
+	/* keep track of key state */
+	always_ff @(negedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+	    key_ready <= 2'b00;
+		key_shift_len <= 0;
+	  end
+	  else if (key_ready == 2'b00) begin
+		key_ready <= 2'b01;
+	  end
+	  else if (key_ready == 2'b01) begin
+		key_ready <= ((key_c[575]) || key_shift_len == 10'd575) ? 2'b10 : 2'b01;
+		key_shift_len <= (key_c[575]) ? key_count : 0;
+	  end
+	  else if (key_ready == 2'b10) begin
+		key_ready <= (key_count == 10'd0) ? 2'b11 : 2'b10;
+	  end
+	end
+
+	/* cycle salt */
+	always_ff @(posedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+		salt_ready <= 0;
+	  end
+	  else if (salt_ready == 0) begin
+		salt_c <= {salt[63:0], {4{salt}}};
+		salt_ready <= 1;
+	  end
+	end
+	
+	/* cost -> 2^cost */
+	always_ff @(posedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+	    cost_a <= 0;
+		cost_ready <= 0;
+	  end
+	  else if (cost_ready == 0) begin
+		cost_a[cost] <= 1;
+		cost_ready <= 1;
+	  end
+	end
+
+	/* signal to start fiestel */
+	always_ff @(posedge clk_0, negedge rst_l) begin
+	  if (~rst_l) begin
+	    start <= 0;
+	  end
+	  else begin
+		start <= (((key_ready == 2'b11) && salt_ready) && cost_ready);
+	  end
+	end
+
+endmodule : load_costsaltkey
+
+module output_rst (
+	clk, ext_rst_l,
+	cost, salt, ct_Orph, ct_eanB, ct_ehol,
+	ct_derS, ct_cryD, ct_oubt, en_5, 
+	hash, int_rst_l
+	);
+
+	input bit [5:0] cost;
+	input bit [127:0] salt;
+	input bit [31:0] ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt;
+	input bit clk, ext_rst_l, en_5;
+
+	output bit [325:0] hash;
+	output bit int_rst_l;
+
+	bit rst_ready;
+
+	always_ff @(posedge clk, negedge ext_rst_l) begin
+	  if (~ext_rst_l) begin
+		hash <= 0;
+		int_rst_l <= 1;
+		rst_ready <= 0;
+	  end
+	  else if (rst_ready) begin
+		int_rst_l <= 0;
+	    rst_ready <= 0;
+	  end
+	  else if (~int_rst_l) begin
+		int_rst_l <= 1;
+	  end
+	  else if (en_5) begin
+		hash <= {cost, salt, ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt};
+		rst_ready <= 1;
+	  end
+	end
+
+endmodule : output_rst

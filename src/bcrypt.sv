@@ -1,32 +1,28 @@
 module bcrypt(
-  clk, reset_l, 
+  clk, reset_l, start,
   rx, tx,
   clk_0, clk_1, clk_2, clk_2_1, clk_3,
   clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor,
   en_clk_3, en_clk_2, en_1, en_2, en_3, en_4,
-  salt_key_sel, psel,
-  s1Data, s2Data, s3Data, s4Data, re_addr, L, R
+  cost0, salt_key_sel, psel,
+  s1Data, s2Data, s3Data, s4Data, re_addr, salt_c, key_c,
+  L, R, ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt
 );
 
   /* Inputs */
-  input logic clk, reset_l;
-  input logic rx;
+  input logic clk, reset_l, start;
+  input logic cost0, rx;
   input logic clk_0, clk_1, clk_2, clk_2_1, clk_3;
   input logic clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor;
   input logic en_clk_3, en_clk_2, en_1, en_2, en_3, en_4, salt_key_sel;
   input logic [8:0] psel;
   input logic [31:0] s1Data, s2Data, s3Data, s4Data;
+  input logic [575:0] salt_c, key_c;
 
   /* Outputs */
   output logic [31:0] re_addr, L, R;
   output logic tx;
-
-  /* SRAM Interface */
-  /*already in fsm
-  logic [63:0] s1Data, s2Data, s3Data, s4Data;
-  logic [6:0] s1Addr, s2Addr, s3Addr, s4Addr;
-  logic s1_en, s2_en, s3_en, s4_en;
-  */
+  output logic [31:0] ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt;
 
   /* UART Interface */
   logic [31:0] uartDataOut, uartDataIn;
@@ -45,7 +41,31 @@ module bcrypt(
   logic [31:0] salt127, salt63; // R
   logic [31:0] salt95, salt31; // L 
   logic shiftSaltR, shiftSaltL, selSaltR, selSaltL, selSalt;
-  
+ 
+  always_ff @(posedge start, posedge en_clk_2, negedge reset_l) begin
+	if (~reset_l) begin
+	  salt127 <= 0;
+	  salt95 <= 0;
+	  salt63 <= 0;
+	  salt31 <= 0;
+	end
+	else if (en_clk_2) begin
+	  if (en_1) begin
+	    salt127 <= salt63;
+		salt63 <= salt127;
+	    salt95 <= salt31;
+	    salt31 <= salt95;
+	  end
+	end
+	else if (start) begin
+	  salt127 <= salt_c[127:96];
+	  salt95 <= salt_c[95:64];
+	  salt63 <= salt_c[63:32];
+	  salt31 <= salt_c[31:0];
+	end
+  end
+ 
+/*
   always_ff @(posedge clk_0, posedge en_clk_2, negedge reset_l) begin
     if(!reset_l) begin
       salt127 <= 0;
@@ -72,11 +92,22 @@ module bcrypt(
       end
     end
   end
+*/
 
   /* EDITED Key Shift Register */
   logic [575:0] key;
   logic shiftKey;
-  
+
+  always_ff @(posedge start, negedge reset_l) begin
+	if (~reset_l) begin
+	  key <= 0;
+	end
+	else begin
+	  key <= key_c;
+	end
+  end
+ 
+/* 
   always_ff @(posedge clk_0, negedge reset_l) begin
     if(!reset_l) begin
       key <= 0;
@@ -85,8 +116,10 @@ module bcrypt(
       if(shiftKey) key <= {uartDataOut, (key >> 32)};
     end
   end
+*/
 
   /* EDITED Cost Shift Register and Comparison */
+/*  
   logic [31:0] cost;
   logic shiftCost;
 
@@ -100,12 +133,17 @@ module bcrypt(
       end
     end
   end
+*/
 
   /* EDITED Ciphertext Shift Register */
-  logic [31:0] ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt;
   logic selCT;
+  logic ctext_load, ctext_load_en, ctext_load_en2;
 
-  always_ff @(posedge en_clk_2, negedge reset_l) begin
+  assign ctext_load = ((en_clk_2 && en_4) || en_clk_3);
+  assign ctext_load_en = ~((en_clk_3 && ((~en_3) || (~cost0))));
+  assign ctext_load_en2 = ~(en_clk_3 && ((~en_4) || (~cost0)));
+  
+  always_ff @(posedge clk_2, negedge reset_l) begin
     if(!reset_l) begin
       ct_Orph <= 32'h4f727068;
       ct_eanB <= 32'h65616e42;
@@ -114,13 +152,13 @@ module bcrypt(
       ct_cryD <= 32'h63727944;
       ct_oubt <= 32'h6f756274;
     end
-    else if (en_4) begin
-	  ct_Orph <= ct_ehol;
-	  ct_ehol <= ct_cryD;
-	  ct_cryD <= L;
-	  ct_eanB <= ct_derS;
-	  ct_derS <= ct_oubt;
-	  ct_oubt <= R;
+    else if (ctext_load) begin
+	  ct_Orph <= (ctext_load_en) ? ct_ehol : ct_Orph;
+	  ct_ehol <= (ctext_load_en) ? ct_cryD : ct_ehol;
+	  ct_cryD <= (ctext_load_en2) ? L : ct_cryD;
+	  ct_eanB <= (ctext_load_en) ? ct_derS : ct_eanB;
+	  ct_derS <= (ctext_load_en) ? ct_oubt : ct_derS;
+	  ct_oubt <= (ctext_load_en2) ? R : ct_oubt;
     end
   end
 
@@ -133,7 +171,7 @@ module bcrypt(
   logic [575:0] p_key_out;
   logic [31:0] l_in, r_in;
 
-  assign p_key_out = salt_key_sel ? {salt63, salt31, {4{salt127, salt95, salt63, salt31}}} : key;
+  assign p_key_out = salt_key_sel ? salt_c : key_c;
   assign p_xor = (clk_p_xor || clk_p_xor0);
 
   always_ff @(posedge clk_wr_addr, negedge clk_wr_addr, negedge reset_l) begin
@@ -214,14 +252,13 @@ module bcrypt(
 
   logic selFeistelMemOrZero;
   logic [31:0] feistelXorMem;
-  logic xor_load, ctext_load;
+  logic xor_load;
   logic feistel_clk;
 
   assign selFiestelMemOrZero = (~en_clk_2);
 
   assign feistelXorMem = (((s1Data + s2Data) ^ s3Data) + s4Data);
   assign re_addr = (selFeistelMemOrZero) ? (P0 ^ feistelXorMem ^ R) : R;
-  assign ctext_load = ((en_clk_2 && en_4) || en_clk_3);
   assign xor_load = (en_clk_2 && (en_1 || en_2 || en_3));
 
   or g0(feistel_clk, clk_1, clk_2);
@@ -236,8 +273,8 @@ module bcrypt(
 	  R <= L;
 	end
 	else if (ctext_load) begin
-	  L <= (ct_Orph && {32{en_4}});
-	  R <= (ct_eanB && {32{en_4}});
+	  L <= (ct_Orph && {32{ctext_load_en}});
+	  R <= (ct_eanB && {32{ctext_load_en}});
 	end
 	else if (clk_2_1 || xor_load) begin        //HERE ISH
 	  L <= L ^ (salt31 && {32{en_1}});
