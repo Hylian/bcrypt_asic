@@ -1,5 +1,5 @@
 module bcrypt(
-  clk, reset_l, start,
+  clk, reset_l, start, load_en,
   rx, tx,
   clk_0, clk_1, clk_2, clk_2_1, clk_3,
   clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor,
@@ -10,7 +10,7 @@ module bcrypt(
 );
 
   /* Inputs */
-  input logic clk, reset_l, start;
+  input logic clk, reset_l, start, load_en;
   input logic cost0, rx;
   input logic clk_0, clk_1, clk_2, clk_2_1, clk_3;
   input logic clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor;
@@ -42,7 +42,7 @@ module bcrypt(
   logic [31:0] salt95, salt31; // L 
   logic shiftSaltR, shiftSaltL, selSaltR, selSaltL, selSalt;
  
-  always_ff @(posedge start, posedge en_clk_2, negedge reset_l) begin
+  always_ff @(posedge load_en, posedge en_clk_2, negedge reset_l) begin
 	if (~reset_l) begin
 	  salt127 <= 0;
 	  salt95 <= 0;
@@ -57,7 +57,8 @@ module bcrypt(
 	    salt31 <= salt95;
 	  end
 	end
-	else if (start) begin
+	else if (load_en) begin
+//	  $display("loading...salt_c=%h", salt_c);
 	  salt127 <= salt_c[127:96];
 	  salt95 <= salt_c[95:64];
 	  salt63 <= salt_c[63:32];
@@ -98,7 +99,7 @@ module bcrypt(
   logic [575:0] key;
   logic shiftKey;
 
-  always_ff @(posedge start, negedge reset_l) begin
+  always_ff @(posedge load_en, negedge reset_l) begin
 	if (~reset_l) begin
 	  key <= 0;
 	end
@@ -153,6 +154,9 @@ module bcrypt(
       ct_oubt <= 32'h6f756274;
     end
     else if (ctext_load) begin
+//	  $display("\n*********************");
+//	  $display("%h\n%h\n%h\n%h\n%h\n%h\n",
+//	  			ct_Orph, ct_ehol, ct_cryD, ct_eanB, ct_derS, ct_oubt);
 	  ct_Orph <= (ctext_load_en) ? ct_ehol : ct_Orph;
 	  ct_ehol <= (ctext_load_en) ? ct_cryD : ct_ehol;
 	  ct_cryD <= (ctext_load_en2) ? L : ct_cryD;
@@ -255,10 +259,10 @@ module bcrypt(
   logic xor_load;
   logic feistel_clk;
 
-  assign selFiestelMemOrZero = (~en_clk_2);
+  //assign selFiestelMemOrZero = (~en_clk_2);
 
   assign feistelXorMem = (((s1Data + s2Data) ^ s3Data) + s4Data);
-  assign re_addr = (selFeistelMemOrZero) ? (P0 ^ feistelXorMem ^ R) : R;
+  assign re_addr = (en_clk_2) ? R : ((P0 ^ feistelXorMem) ^ R);
   assign xor_load = (en_clk_2 && (en_1 || en_2 || en_3));
 
   or g0(feistel_clk, clk_1, clk_2);
@@ -269,16 +273,19 @@ module bcrypt(
       R <= 0;
     end
     else if (clk_1) begin
+//	  $display("clk1\n");
 	  L <= re_addr;
 	  R <= L;
 	end
 	else if (ctext_load) begin
-	  L <= (ct_Orph && {32{ctext_load_en}});
-	  R <= (ct_eanB && {32{ctext_load_en}});
+//	  $display("clk2 ctext_load, en=%d\n", ctext_load_en);
+	  L <= (ct_Orph & {32{ctext_load_en}});
+	  R <= (ct_eanB & {32{ctext_load_en}});
 	end
-	else if (clk_2_1 || xor_load) begin        //HERE ISH
-	  L <= L ^ (salt31 && {32{en_1}});
-	  R <= R ^ (salt63 && {32{en_1}});
+	else if (clk_2_1 || xor_load) begin
+//	  $display("clk2 xor_load, en=%d\n", en_1);
+	  L <= L ^ (salt31 & {32{en_1}});
+	  R <= R ^ (salt63 & {32{en_1}});
 	end
   end
 
