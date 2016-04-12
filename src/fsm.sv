@@ -24,6 +24,7 @@ module state_fsm(
 	/* FF for keeping track of cost */
 	always_ff @(posedge costshift, negedge rst_l) begin
 	  if (~rst_l) begin
+		$display("resetting");
 	    cost_curr <= 0;
 	  end
 	  else if (costshift) begin
@@ -472,17 +473,17 @@ module p_ctrl(
 endmodule : p_ctrl
 
 module load_costsaltkey(
-	cost, key, salt, clk_0, rst_l,
-	cost_a, key_c, salt_c, start);
+	cost, key, salt, clk_0, clk_2_1, rst_l,
+	cost_a, key_c, salt_c, start, load_en);
 
 	input bit [575:0] key;
 	input bit [127:0] salt;
 	input bit [5:0] cost;
-	input bit clk_0, rst_l;
+	input bit clk_0, rst_l, clk_2_1;
 	
 	output bit [575:0] key_c, salt_c;
 	output bit [63:0] cost_a;
-	output bit start;
+	output bit start, load_en;
 
 	bit [1:0] key_ready;
 	bit cost_ready, salt_ready;
@@ -560,12 +561,20 @@ module load_costsaltkey(
 	end
 
 	/* signal to start fiestel */
-	always_ff @(posedge clk_0, negedge rst_l) begin
+	always_ff @(posedge clk_0, posedge clk_2_1, negedge rst_l) begin
 	  if (~rst_l) begin
 	    start <= 0;
+		load_en <= 0;
+	  end
+	  else if (clk_2_1) begin
+		start <= 0;
+	  end
+	  else if (load_en) begin
+		load_en <= 0;
+		start <= 1;
 	  end
 	  else begin
-		start <= (((key_ready == 2'b11) && salt_ready) && cost_ready);
+		load_en <= (((key_ready == 2'b11) && salt_ready) && cost_ready);
 	  end
 	end
 
