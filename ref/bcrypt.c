@@ -326,14 +326,6 @@ main(void)
 	char mysalt[BCRYPT_SALTSPACE];
 	bcrypt_initsalt(10, mysalt, sizeof(mysalt));
 	printf("salt: %s\n", mysalt);
-	/*
-
-	char *salti = mysalt;
-	while(*salti)
-	{
-	  printf("%x\n", *(salti++) & 0xff);
-	}
-	*/
 	
 	const char mykey[] = "mykey";
 	printf("key: %s\n", mykey);

@@ -45,6 +45,7 @@
 
 //#include <crypto/blf.h>
 #include "blf.h"
+#include <stdio.h>
 
 #undef inline
 #ifdef __GNUC__
@@ -73,6 +74,8 @@ Blowfish_encipher(blf_ctx *c, u_int32_t *x)
 	Xl = x[0];
 	Xr = x[1];
 
+	printf("Feistel start: L=0x%08x R=0x%08x ", x[0], x[1]);
+
 	Xl ^= p[0];
 	BLFRND(s, p, Xr, Xl, 1); BLFRND(s, p, Xl, Xr, 2);
 	BLFRND(s, p, Xr, Xl, 3); BLFRND(s, p, Xl, Xr, 4);
@@ -85,7 +88,8 @@ Blowfish_encipher(blf_ctx *c, u_int32_t *x)
 
 	x[0] = Xr ^ p[17];
 	x[1] = Xl;
-}
+
+	printf("end: L=0x%08x R=0x%08x\n", x[0], x[1]); }
 
 void
 Blowfish_decipher(blf_ctx *c, u_int32_t *x)
@@ -422,6 +426,8 @@ Blowfish_expand0state(blf_ctx *c, const u_int8_t *key, u_int16_t keybytes)
 	u_int32_t temp;
 	u_int32_t data[2];
 
+	printf("Begin expand0state\n");
+
 	j = 0;
 	for (i = 0; i < BLF_N + 2; i++) {
 		/* Extract 4 int8 to 1 int32 from keystream */
@@ -447,6 +453,8 @@ Blowfish_expand0state(blf_ctx *c, const u_int8_t *key, u_int16_t keybytes)
 			c->S[i][k + 1] = data[1];
 		}
 	}
+
+	printf("End expand0state\n");
 }
 
 
@@ -459,6 +467,8 @@ Blowfish_expandstate(blf_ctx *c, const u_int8_t *data, u_int16_t databytes,
 	u_int16_t k;
 	u_int32_t temp;
 	u_int32_t d[2];
+
+	printf("Begin expandstate\n");
 
 	j = 0;
 	for (i = 0; i < BLF_N + 2; i++) {
@@ -489,6 +499,8 @@ Blowfish_expandstate(blf_ctx *c, const u_int8_t *data, u_int16_t databytes,
 			c->S[i][k + 1] = d[1];
 		}
 	}
+
+	printf("End expandstate\n");
 
 }
 
