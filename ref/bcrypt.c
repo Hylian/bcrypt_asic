@@ -192,6 +192,14 @@ bcrypt_hashpass(const char *key, const char *salt, char *encrypted,
 	snprintf(encrypted, 8, "$2%c$%2.2u$", minor, logr);
 	encode_base64(encrypted + 7, csalt, BCRYPT_MAXSALT);
 	encode_base64(encrypted + 7 + 22, ciphertext, 4 * BCRYPT_WORDS - 1);
+
+	printf("OUTPUT: ");
+	for(int i = 0; i < 23; i++) 
+	{
+	  printf("%x", ciphertext[i]);
+	}
+	printf("\n");
+
 	bzero(&state, sizeof(state));
 	bzero(&state, sizeof(state));
 	bzero(ciphertext, sizeof(ciphertext));
@@ -324,9 +332,9 @@ int
 main(void)
 {
 	char mysalt[BCRYPT_SALTSPACE];
-	bcrypt_initsalt(10, mysalt, sizeof(mysalt));
+	bcrypt_initsalt(4, mysalt, sizeof(mysalt));
 	printf("salt: %s\n", mysalt);
-	
+
 	const char mykey[] = "mykey";
 	printf("key: %s\n", mykey);
 
