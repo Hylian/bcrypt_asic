@@ -545,6 +545,7 @@ module load_costsaltkey(
 	  else if (salt_ready == 0) begin
 		salt_c <= {salt[63:0], {4{salt}}};
 		salt_ready <= 1;
+		$display("%s", salt_c);
 	  end
 	end
 	

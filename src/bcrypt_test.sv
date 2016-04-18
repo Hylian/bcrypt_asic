@@ -153,33 +153,31 @@ module test;
 
 	always_ff @(negedge int_rst_l) begin
 	  if (en_5) begin
-	  	$display("hash=%b", hash);
-	  	$write("$2a$%h$", hash[325:320]);
+/*	  	$display("hash=%b", hash);
+	    $write("$2a$%h$", hash[325:320]);
 	  	for (int i=0; i<53; i++) begin
 		  $write("%0s", base64[index[i]]);
-	  	end
+	  end
 	  	$display("\n");
-		$finish;
+*/		$finish;
 	  end
 	end
 
-
-/*
 	always_ff @(posedge clk_2) begin
+	  $display("L=%h\nR=%h\n", l, r);
+	end
+/*
+	always_ff @(posedge clk_2, posedge clk_2_1) begin
 	  if (en_3) begin
 		$display("l=%h, r=%h", l, r);
 	  end
 	end
 */
-
 /*
 	always_ff @(negedge clk_1, negedge clk_2, negedge clk_2_1) begin
-	  $display("l=%h\nr=%h\nre_addr=%h", l, r, re_addr);
-	  $display("feistelXorMem=%h\nP0=%h\nenclk2=%d\n",
-				m9.feistelXorMem, m9.P0, en_clk_2);
+	  $display("l=%h\nr=%h\n", l, r);
 	end
 */
-
 /*
 	always_ff @(negedge int_rst_l) begin
 	  $display("hash=%b", hash);
@@ -187,10 +185,11 @@ module test;
 */
 
 	initial begin
-	  $monitor("state=%d, rounds_left=%d", m3.state, m3.cost_curr);
+//	  $monitor("state=%d, rounds_left=%d", m3.state, m3.cost_curr);
+	  //$monitor("l=%h\nr=%h\n", l, r);
 	  clk = 0;
 	  cost = 5'd4;		//cost input
-	  salt = 128'hb9e40330d2c10bbd8bd30cbd0220ceea;	//salt input
+	  salt = 128'he4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4;	//salt input
 	  key = 576'h6d796b6579;	//key  input
 	  base64 = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 	  ext_rst_l = 1;

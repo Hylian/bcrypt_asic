@@ -279,6 +279,7 @@ module bcrypt(
 	end
 	else if (ctext_load) begin
 //	  $display("clk2 ctext_load, en=%d\n", ctext_load_en);
+	  $display("clk2");
 	  L <= (ct_Orph & {32{ctext_load_en}});
 	  R <= (ct_eanB & {32{ctext_load_en}});
 	end
