@@ -15,7 +15,7 @@ module test;
 	logic [6:0] wl_0, wl_1, wl_2, wl_3;
 	logic d_sel0, d_sel1, d_sel2, d_sel3, salt_key_sel;
 	logic [63:0] bl;
-	logic [31:0] l, r;
+	logic [31:0] l, r, l_out, r_out;
 	logic [8:0] psel;
     logic rx, tx, load_en;
     logic [31:0] s0data, s1data, s2data, s3data;
@@ -25,7 +25,7 @@ module test;
 	clock_fsm m1(en, en_1, en_2, en_3, en_4, cost0, load,
 			 clk, rst_l, clk_3, 
 		     clk_0, clk_l, clk_1, clk_2, clk_2_1, 
-			 en_clk_2, en_clk_1_0, en_clk_1_17,
+			 en_clk_2, en_clk_1_0, en_clk_1_16, en_clk_1_17,
 			 clk_wr_addr, clk_rw_sel, 
 			 clk_p_xor0, clk_p_xor, clk_ctext_load);
 
@@ -40,8 +40,9 @@ module test;
 	addr_calc m4(clk_wr_addr, rst_l, en_4, 
 		     wr_addr, csp, cs0, cs1, cs2, cs3);
 
-	sram_ctrl m5(clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l, en_clk_1_17,
-		     l,      r,    wr_addr, re_addr, data_ready,
+	sram_ctrl m5(clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l, 
+			 en_clk_1_16, en_clk_1_17,
+		     l_out, r_out, wr_addr, re_addr, data_ready,
 		     wl_0,   wl_1,   wl_2,   wl_3,
 		     d_sel0, d_sel1, d_sel2, d_sel3,
 		     bl);
@@ -60,10 +61,11 @@ module test;
 			  rx, tx, 
 			  clk_0, clk_1, clk_2, clk_2_1, clk_3,
 			  clk_wr_addr, clk_ctext_load, clk_p_xor0, clk_p_xor,
+			  en_clk_1_0, en_clk_1_16, 
 			  en_clk_3, en_clk_2, en_1, en_2, en_3, en_4,
 			  cost0, salt_key_sel, psel,
 			  s0data, s1data, s2data, s3data, re_addr, salt_c, key_c,
-			  l, r, ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt);
+			  l_out, r_out, ct_Orph, ct_eanB, ct_ehol, ct_derS, ct_cryD, ct_oubt);
 
 	sram m10(clk_1, clk_2, rst_l, {wl_3, wl_2, wl_1, wl_0}, clk_rw_sel, 
 			bl, d_sel0, d_sel1, d_sel2, d_sel3,
@@ -150,34 +152,115 @@ module test;
 	  index[52] = {hash[11:8], 2'b0};
 	end
 
-
+/****** with 64b encoding *****/
 	always_ff @(negedge int_rst_l) begin
 	  if (en_5) begin
-/*	  	$display("hash=%b", hash);
-	    $write("$2a$%h$", hash[325:320]);
+//	  	$display("hash=%h", hash[191:0]);
+	  	$write("encoded = $2a$%h$", hash[325:320]);
 	  	for (int i=0; i<53; i++) begin
 		  $write("%0s", base64[index[i]]);
-	  end
+	  	end
 	  	$display("\n");
-*/		$finish;
+		$finish;
 	  end
 	end
 
-	always_ff @(posedge clk_2) begin
-	  $display("L=%h\nR=%h\n", l, r);
-	end
+/*******without 64b encoding ******/
 /*
-	always_ff @(posedge clk_2, posedge clk_2_1) begin
+	always_ff @(negedge int_rst_l) begin
+	  if (en_5) begin
+	  	$display("hash=%h", hash[191:0]);
+		$finish;
+	  end
+	end
+*/
+
+/****** new *******/
+/* good for debug */
+/*
+	always_ff @(posedge clk_1) begin
+//	  if (en_4) begin
+	    $display("\nround=%d\ncurrent re_addr=%h\ncurrent cout_h=%h\ncurrent L=%h\ncurrent R=%h\n",
+				  m1.count, m9.re_addr, m9.cout_h, m9.L, m9.R);
+//	  end
+	end
+
+	always_ff @(negedge clk_1) begin
+//	  if (en_4) begin
+	    $display("parray=%h", m9.P0);
+	    $display("re_addr=R ^ math ^ parray\n       =%h ^ %h ^ %h\n       =%h",
+				  m9.R, m9.feistelXorMem, m9.P0, m9.re_addr);
+	    $display("new L = %h\nnew R = %h", m9.L, m9.R);
+//	  end
+	end
+*/
+
+/*
+	always_ff @(posedge clk_2) begin
+	  if (m9.ctext_load) begin
+		$display("\nrounds=%d", m2.count);
+	  end
+	end
+*/
+
+/*
+	always_ff @(negedge clk_2) begin
+	  if (m9.ctext_load) begin
+		$display("\nOrpheanB=%h_%h\neholderS=%h_%h\ncryDoubt=%h_%h",
+				 ct_Orph, ct_eanB, ct_ehol,
+				 ct_derS, ct_cryD, ct_oubt);
+	  end
+	end
+*/
+/*
+	always_ff @(negedge clk_1) begin
+	  $display("parray=%h\nL=%h\nR=%h\nre_addr=%h\nmath=%h",
+				m9.P0, m9.L, m9.R, m9.re_addr, m9.feistelXorMem);
+	end
+*/
+
+/*** old ***/
+/*
+	always_ff @(posedge clk_1, posedge clk_2, posedge clk_2_1) begin
+	  if (clk_1) begin
+		$display("\nround=%d", m9.round);
+		if (clk_p_xor0) begin
+		  $display("parray=%h", m9.P0 ^ m9.p_key_out[32*(17) +: 32]);
+		end
+		else if (clk_p_xor) begin
+		  $display("parray=%h", m9.P1 ^ m9.p_key_out[32*(17) +: 32]);
+		end
+		else if (psel[0]) begin
+		  $display("parray=%h", m9.l_in);
+		end
+		else begin
+		  $display("parray=%h", m9.P1);
+		end
+		$display("L=%h\nR=%h\nmath=%h",
+				  re_addr, m9.L, m9.feistelXorMem);
+	  end
+	  else begin
+		$display("load\nsaltL=%h\nsaltR=%h\nL=%h\nR=%h",
+				  m9.salt31, m9.salt63,
+				  m9.L ^ (m9.salt31 & {32{en_1}}),
+				  m9.R ^ (m9.salt63 & {32{en_1}}));
+	  end
+	end
+*/
+/*
+	always_ff @(posedge clk_2) begin
 	  if (en_3) begin
 		$display("l=%h, r=%h", l, r);
 	  end
 	end
 */
+
 /*
 	always_ff @(negedge clk_1, negedge clk_2, negedge clk_2_1) begin
-	  $display("l=%h\nr=%h\n", l, r);
+	  $display("l=%h\nr=%h", l, r);
 	end
 */
+
 /*
 	always_ff @(negedge int_rst_l) begin
 	  $display("hash=%b", hash);
@@ -186,12 +269,13 @@ module test;
 
 	initial begin
 //	  $monitor("state=%d, rounds_left=%d", m3.state, m3.cost_curr);
-	  //$monitor("l=%h\nr=%h\n", l, r);
 	  clk = 0;
-	  cost = 5'd4;		//cost input
-	  salt = 128'he4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4;	//salt input
-	  key = 576'h6d796b6579;	//key  input
-	  base64 = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	  cost = 5'd6;		//cost input
+	  salt = 128'h771288f0_fa247ffd_cec3f4de_a2861b85;	//salt input
+	  //key = 576'h70617373776f726400;	//password
+	  key = 576'h436841724c69457200; //ChArLiEr
+	  /* null terminate key */
+	  base64 = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 	  ext_rst_l = 1;
 	  load = 0;
 	  //$display("******** t=0 *********\n");

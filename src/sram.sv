@@ -3,7 +3,7 @@ module sram(
 	clk_1, clk_2, rst_l, wl, rw_sel, bl,
 	dsel0, dsel1, dsel2, dsel3,
 	cs0, cs1, cs2, cs3,
-	data_ready, data0, data1, data2, data3
+	data_ready, dlatch0, dlatch1, dlatch2, dlatch3
 	);
 
 	input bit clk_1, clk_2, rst_l;
@@ -14,13 +14,13 @@ module sram(
 	input bit [63:0] bl;
 
 	output bit data_ready;
-	output bit [31:0] data0, data1, data2, data3;
+	output bit [31:0] dlatch0, dlatch1, dlatch2, dlatch3;
 
 	bit bl_ready;
 	bit wl_ready;
 	bit op_in, buffer_thing;
 	bit [63:0] bl_in;
-	bit [31:0] dlatch0, dlatch1, dlatch2, dlatch3;
+//	bit [31:0] dlatch0, dlatch1, dlatch2, dlatch3;
 	bit [63:0] mem0[0:127];
 	bit [63:0] mem1[0:127];
 	bit [63:0] mem2[0:127];
@@ -553,15 +553,23 @@ module sram(
 	  end
 	  else if (wr_en) begin
 	    if (cs0) begin
+		  //$display("mem0[%0d]=%h_%h", wl[6:0], bl[63:32], bl[31:0]);
+		  //$display("%h", bl);
 		  mem0[wl[6:0]] <= bl;
 		end
 	    else if (cs1) begin
+		  //$display("mem1[%0d]=%h_%h", wl[13:7], bl[63:32], bl[31:0]);
+		  //$display("%h", bl);
 		  mem1[wl[13:7]] <= bl;
 		end
 	    else if (cs2) begin
+		  //$display("mem2[%0d]=%h_%h", wl[20:14], bl[63:32], bl[31:0]);
+		  //$display("%h", bl);
 		  mem2[wl[20:14]] <= bl;
 		end
 	    else if (cs3) begin
+		  //$display("mem3[%0d]=%h_%h", wl[27:21], bl[63:32], bl[31:0]);
+		  //$display("%h", bl);
 		  mem3[wl[27:21]] <= bl;
 		end
 		dlatch0 <= 0;
@@ -570,10 +578,15 @@ module sram(
 		dlatch3 <= 0;
 	  end
 	  else if (re_en) begin
-		dlatch0 <= ((dsel0) ? mem0[wl[6:0]][63:32]   : mem0[wl[6:0]][31:0]);
-		dlatch1 <= ((dsel1) ? mem1[wl[13:7]][63:32]  : mem1[wl[13:7]][31:0]);
-		dlatch2 <= ((dsel2) ? mem2[wl[20:14]][63:32] : mem2[wl[20:14]][31:0]);
-		dlatch3 <= ((dsel3) ? mem3[wl[27:21]][63:32] : mem3[wl[27:21]][31:0]);
+		//$display("re_addr=%h", {wl[27:21], dsel3, wl[20:14], dsel2, wl[13:7], dsel1, wl[6:0], dsel0});
+		//$display("mem0[%0d][%b]=%h_%h", wl[6:0],   dsel0, mem0[wl[6:0]][63:32],   mem0[wl[6:0]][31:0]);
+		//$display("mem1[%0d][%b]=%h_%h", wl[13:7],  dsel1, mem1[wl[13:7]][63:32],  mem1[wl[13:7]][31:0]);
+		//$display("mem2[%0d][%b]=%h_%h", wl[20:14], dsel2, mem2[wl[20:14]][63:32], mem2[wl[20:14]][31:0]);
+		//$display("mem3[%0d][%b]=%h_%h", wl[27:21], dsel3, mem3[wl[27:21]][63:32], mem3[wl[27:21]][31:0]);
+		dlatch0 <= ((dsel0) ? mem0[wl[6:0]][31:0]   : mem0[wl[6:0]][63:32]);
+		dlatch1 <= ((dsel1) ? mem1[wl[13:7]][31:0]  : mem1[wl[13:7]][63:32]);
+		dlatch2 <= ((dsel2) ? mem2[wl[20:14]][31:0] : mem2[wl[20:14]][63:32]);
+		dlatch3 <= ((dsel3) ? mem3[wl[27:21]][31:0] : mem3[wl[27:21]][63:32]);
 	  end
 	  else begin
 	    dlatch0 <= 0;
@@ -633,6 +646,7 @@ module sram(
 	  end
 	end
 
+/*
 	always_ff @(posedge clk_1, negedge rst_l) begin
 	  if (~rst_l) begin
 	    data0 <= 0;
@@ -647,6 +661,7 @@ module sram(
 	    data3 <= dlatch3;
 	  end
 	end
+*/
 
 endmodule : sram
 

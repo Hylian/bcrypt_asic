@@ -92,7 +92,7 @@ module clock_fsm (
 	en, en_1, en_2, en_3, en_4, cost0, load,
 	clk, rst_l, clk_3,
 	clk_0, clk_l, clk_1, clk_2, clk_2_1, 
-	en_clk_2, en_clk_1_0, en_clk_1_17,
+	en_clk_2, en_clk_1_0, en_clk_1_16, en_clk_1_17,
 	clk_wr_addr, clk_rw_sel, clk_p_xor0, clk_p_xor, clk_ctext_load
 	);
 
@@ -100,7 +100,8 @@ module clock_fsm (
 	input bit en, en_1, en_2, en_3, en_4, cost0, load, clk, rst_l, clk_3;
 
 	/* Outputs */
-	output bit clk_0, clk_l, clk_1, clk_2, clk_2_1, en_clk_2, en_clk_1_0, en_clk_1_17;
+	output bit clk_0, clk_l, clk_1, clk_2, clk_2_1;
+	output bit en_clk_2, en_clk_1_0, en_clk_1_16, en_clk_1_17;
 	output bit clk_wr_addr, clk_rw_sel, clk_p_xor0, clk_p_xor, clk_ctext_load;
 
 	/* Intermediary logic */
@@ -176,7 +177,16 @@ module clock_fsm (
 	  end
 	end
 
-	/* enable signal for last clk_1 in cycle */
+	/* enable signal for last two clk_1s in cycle */
+	always_ff @(negedge clk, negedge rst_l) begin
+	  if (~rst_l) begin
+	    en_clk_1_16 <= 0;
+	  end
+	  else begin
+	    en_clk_1_16 <= (count_n == 5'd18);
+	  end
+	end
+
 	always_ff @(negedge clk, negedge rst_l) begin
 	  if (~rst_l) begin
 	    en_clk_1_17 <= 0;
@@ -349,8 +359,8 @@ endmodule : addr_calc
 
 module sram_ctrl(
 	clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l,
-	en_clk_1_17,
-	l, r, wr_addr, re_addr, data_ready,
+	en_clk_1_16, en_clk_1_17,
+	l_out, r_out, wr_addr, re_addr, data_ready,
 	wl_0, wl_1, wl_2, wl_3,
 	d_sel0, d_sel1, d_sel2, d_sel3,
 	bl
@@ -358,9 +368,9 @@ module sram_ctrl(
 
 	/* Input logic */
 	input bit clk_wr_addr, clk_rw_sel, clk_1, clk_2, rst_l;
-	input bit en_clk_1_17;
+	input bit en_clk_1_16, en_clk_1_17;
 	input bit data_ready;
-	input bit [31:0] l, r, re_addr;
+	input bit [31:0] l_out, r_out, re_addr;
 	input bit [6:0] wr_addr;
 
 	/* Output logic */
@@ -408,23 +418,23 @@ module sram_ctrl(
 	    precharge <= 0;
 	  end
 	  else begin
-	    precharge <= (en_clk_1_17) ? 64'd0 : {64{1'b1}};
+	    precharge <= (en_clk_1_16 || en_clk_1_17) ? 64'd0 : {64{1'b1}};
 	  end
 	end
 
 	/* bitline muxing */
-	or g4[63:0] (bl, precharge, {l, r});
+	or g4[63:0] (bl, precharge, {l_out, r_out});
 
 	/* wordline muxing */
-	assign wl_0 = (clk_rw_sel) ? wr_addr : re_addr[7:1];
-	assign wl_1 = (clk_rw_sel) ? wr_addr : re_addr[15:9];
-	assign wl_2 = (clk_rw_sel) ? wr_addr : re_addr[23:17];
-	assign wl_3 = (clk_rw_sel) ? wr_addr : re_addr[31:25];
+	assign wl_0 = (clk_rw_sel) ? wr_addr : re_addr[31:25];
+	assign wl_1 = (clk_rw_sel) ? wr_addr : re_addr[23:17];
+	assign wl_2 = (clk_rw_sel) ? wr_addr : re_addr[15:9];
+	assign wl_3 = (clk_rw_sel) ? wr_addr : re_addr[7:1];
 
-	assign d_sel0 = re_addr[0];
-	assign d_sel1 = re_addr[8];
-	assign d_sel2 = re_addr[16];
-	assign d_sel3 = re_addr[24];
+	assign d_sel0 = re_addr[24];
+	assign d_sel1 = re_addr[16];
+	assign d_sel2 = re_addr[8];
+	assign d_sel3 = re_addr[0];
 
 endmodule : sram_ctrl
 
@@ -498,11 +508,10 @@ module load_costsaltkey(
 		key_c <= key;
 	  end
 	  else if (key_ready == 2'b01) begin
-	    key_c <= (key_c << 1'b1);
+	    key_c <= (key_c << 8);
 	  end
 	  else if (key_ready == 2'b10) begin
-	    key_c <= (key_c >> 1'b1);
-		key_c[575] <= key_c[key_shift_len];
+		key_c[8*key_count-1 -: 8] <= key_c[575-8*(key_shift_len-key_count) -: 8];
 	  end
 	end
 
@@ -529,8 +538,8 @@ module load_costsaltkey(
 		key_ready <= 2'b01;
 	  end
 	  else if (key_ready == 2'b01) begin
-		key_ready <= ((key_c[575]) || key_shift_len == 10'd575) ? 2'b10 : 2'b01;
-		key_shift_len <= (key_c[575]) ? key_count : 0;
+		key_ready <= (key_c[575:572] || key_shift_len == 10'd71) ? 2'b10 : 2'b01;
+		key_shift_len <= (key_c[575:572]) ? key_count : 0;
 	  end
 	  else if (key_ready == 2'b10) begin
 		key_ready <= (key_count == 10'd0) ? 2'b11 : 2'b10;
@@ -543,9 +552,8 @@ module load_costsaltkey(
 		salt_ready <= 0;
 	  end
 	  else if (salt_ready == 0) begin
-		salt_c <= {salt[63:0], {4{salt}}};
+		salt_c <= {{4{salt}}, salt[127:64]};
 		salt_ready <= 1;
-		$display("%s", salt_c);
 	  end
 	end
 	
